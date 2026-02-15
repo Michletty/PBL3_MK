@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a2e;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #ffffff;
+        }
+
+        .stat-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-item p {
+            margin-top: 8px;
+            font-size: 14px;
+            color: #cccccc;
+        }
+
+        .dashboard-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .chart-item {
+            text-align: center;
+        }
+
+        .chart-item p {
+            margin-top: 8px;
+            font-size: 14px;
+            color: #cccccc;
+        }
+
+        iframe {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+    </style>
+
+    <script>
+        // Refresh co 230 sekund – NIE ZMIENIANE
+        setInterval(() => {
+            document.querySelectorAll("iframe").forEach(iframe => {
+                iframe.src = iframe.src;
+            });
+        }, 230000);
+    </script>
+</head>
+
+<body>
+    <h1>System Przeciwprzymrozkowy</h1>
+
+    <!-- Punkt rosy -->
+    <div class="stat-container">
+        <div class="stat-item">
+            <iframe
+                src="http://192.168.1.46:3000/d-solo/ad5b4fh/lora-temp-bme?orgId=1&from=now-6h&to=now&timezone=browser&panelId=panel-4&__feature.dashboardSceneSolo=true"
+                width="450" height="200" frameborder="0">
+            </iframe>
+            <p>Punkt rosy</p>
+        </div>
+    </div>
+
+    <div class="dashboard-container">
+
+        <div class="chart-item">
+            <iframe
+                src="http://192.168.1.46:3000/d-solo/ad5b4fh/lora-temp-bme?orgId=1&from=now-6h&to=now&timezone=browser&panelId=panel-1&__feature.dashboardSceneSolo=true"
+                width="450" height="200" frameborder="0">
+            </iframe>
+            <p>Temperatura na wysokości 2&nbsp;m</p>
+        </div>
+
+        <div class="chart-item">
+            <iframe
+                src="http://192.168.1.46:3000/d-solo/ad5b4fh/lora-temp-bme?orgId=1&from=now-6h&to=now&timezone=browser&panelId=panel-2&__feature.dashboardSceneSolo=true"
+                width="450" height="200" frameborder="0">
+            </iframe>
+            <p>Wilgotność</p>
+        </div>
+
+        <div class="chart-item">
+            <iframe
+                src="http://192.168.1.46:3000/d-solo/ad5b4fh/lora-temp-bme?orgId=1&from=now-6h&to=now&timezone=browser&panelId=panel-3&__feature.dashboardSceneSolo=true"
+                width="450" height="200" frameborder="0">
+            </iframe>
+            <p>Temperatura na wysokości 1&nbsp;m</p>
+        </div>
+
+    </div>
+
+</body>
+</html>

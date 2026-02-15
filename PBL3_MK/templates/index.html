@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Isohypses Map</title>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<style>
+    :root{
+        --accent: #2A93D5;
+        --accent-2: #D56C2A;
+        --bg: linear-gradient(180deg,#eef6fb 0%, #f7fbfd 100%);
+        --card: #ffffff;
+        --muted:#6b7280;
+    }
+    html,body{height:100%;}
+    body {
+        margin:0;
+        background: var(--bg);
+        font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+        color: #0f172a;
+        display:flex;
+        align-items:flex-start;
+        justify-content:center;
+        padding:40px;
+    }
+
+    .app {
+        width:2000px;
+        max-width:calc(100% - 80px);
+        display:grid;
+        grid-template-columns: 1600px 420px;
+        gap:24px;
+        align-items:start;
+    }
+
+    .hero{
+        grid-column:1/3;
+        background: linear-gradient(90deg, rgba(42,147,213,0.12), rgba(213,108,42,0.06));
+        border-radius:12px;
+        padding:18px 24px;
+        display:flex;
+        align-items:center;
+        gap:16px;
+        box-shadow: 0 6px 30px rgba(8,15,24,0.08);
+        backdrop-filter: blur(6px);
+    }
+
+    .hero h1{margin:0;font-size:20px;letter-spacing:-0.5px}
+    .hero p{margin:0;color:var(--muted);font-size:13px}
+
+    .map-card {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 0 8px 30px rgba(8,15,24,0.06);
+    display: flex;
+    flex-direction: column;
+    
+    /* FIX: Force the card to match the map's aspect ratio */
+    height: 840px; 
+    /* width = height * 1.5875 + padding/borders */
+    width: calc(840px * 1.5875); 
+    max-width: 100%; /* Safety for smaller screens */
+    margin: 0 auto;  /* Center the card if the screen is huge */
+}
+
+   .map-wrap {
+    flex: 1;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 8px;
+    /* Remove 'justify-content: center' if you want it to snap to edges */
+    display: block; 
+}
+    .map-wrap svg {
+    /* SVG should also 'contain' itself within the parent */
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    z-index: 2;
+    position: relative;
+    pointer-events: none; 
+}
+
+ .satellite-view {
+    position: absolute;
+    /* Use 'contain' so the image is never cropped */
+    background-size: contain; 
+    background-repeat: no-repeat;
+    background-position: center;
+    
+    /* IMPORTANT: Match these dimensions to your SVG's 
+       internal aspect ratio (1905 / 1200) 
+    */
+    width: 100%;
+    height: 100%;
+    
+    display: none;
+    z-index: 1;
+    background-image: url('/static/smut.png');
+}
+    
+.satellite-view, .map-wrap svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    /* Use 'fill' to force them to match the container exactly */
+    /* Only do this if your .map-card math above is accurate! */
+}
+    .view-toggle{display:flex;gap:8px;margin-top:12px;justify-content:center}
+    .view-btn{padding:8px 16px;border:1px solid rgba(15,23,42,0.1);background:#ffffff;border-radius:6px;cursor:pointer;font-size:13px;transition:all .2s;color:#0f172a}
+    .view-btn:hover{background:rgba(42,147,213,0.08);border-color:var(--accent)}
+    .view-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+    
+#svgView {
+    z-index: 10;
+    position: relative;
+    /* This makes the empty space 'clickable' through to the image */
+    pointer-events: none; 
+}
+
+   #svgView.satellite-mode {
+    background: transparent !important; /* Hide the white SVG box */
+}
+    #svgView.satellite-mode .map-path{display:none}
+
+    .side-panel{
+        background:var(--card);
+        border-radius:12px;
+        padding:14px;
+        box-shadow: 0 8px 30px rgba(8,15,24,0.06);
+    }
+    .poi {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+
+    .point-list{display:grid;grid-template-columns:1fr;gap:10px}
+    .point-card{display:flex;align-items:center;gap:12px;padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.04);cursor:pointer;transition:transform .14s,box-shadow .14s}
+    .point-card:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(11,20,40,0.06)}
+    .dot{width:12px;height:12px;border-radius:50%}
+    .meta{display:flex;flex-direction:column}
+    .meta .name{font-weight:600}
+    .meta .val{color:var(--muted);font-size:13px}
+
+    .footer{margin-top:14px;color:var(--muted);font-size:13px;text-align:center}
+
+    .tooltip{
+        z-index: 9999;
+        position:absolute;
+        background:linear-gradient(180deg,#0b1226 0%, #0f172a 100%);
+        color:#fff;padding:8px 12px;border-radius:6px;font-size:13px;pointer-events:none;display:none;box-shadow:0 8px 30px rgba(2,6,23,0.6)
+    }
+
+    @media (max-width:1100px){
+        .app{grid-template-columns:1fr}
+        .hero{grid-column:1/2}
+    }
+</style>
+</head>
+<body>
+<link rel="icon" type="image/png" href="/static/appcut.png">
+<div class="app">
+    <div class="hero">
+        <div>
+            <img src="/static/appcut.png" alt="App" style="width:56px;height:56px" />
+        </div>
+        <div>
+            <h1>Widzimy się w sadzie</h1>
+            <p>Interaktywna mapa - najedź kursorem, aby zobaczyć aktualne wartości, lub kliknij, aby otworzyć szczegółowe podstrony.</p>
+        </div>
+    </div>
+
+    <div class="map-card">
+        <div class="map-wrap">
+            <!-- SVG MAP -->
+            <svg xmlns="http://www.w3.org/2000/svg" 
+     viewBox="0 0 1905 1200" 
+     id="svgView" 
+     preserveAspectRatio="xMidYMid meet">
+  <path id="Path #12" class="map-path"
+        fill="none" stroke="black" stroke-width="1"
+        d="M 104.00,475.00
+           C 104.00,475.00 -2.00,546.00 -2.00,546.00M 185.00,44.00
+           C 185.00,44.00 219.00,448.00 219.00,448.00M -3.00,801.00
+           C -3.00,801.00 440.00,522.00 440.00,522.00M 0.00,481.00
+           C 0.00,481.00 107.00,477.00 107.00,477.00
+             107.00,477.00 213.00,452.00 213.00,452.00
+             213.00,452.00 441.00,442.00 441.00,442.00M 1583.00,617.00
+           C 1583.00,617.00 1525.00,539.00 1525.00,539.00
+             1525.00,539.00 1517.00,519.00 1496.00,516.00
+             1475.00,513.00 730.00,538.00 730.00,538.00
+             730.00,538.00 719.00,537.00 704.00,548.00
+             689.00,559.00 0.00,1037.00 0.00,1037.00M 665.00,889.00
+           C 665.00,889.00 1300.00,521.00 1300.00,521.00M 150.00,1194.00
+           C 150.00,1194.00 623.00,826.00 623.00,826.00M 428.00,42.00
+           C 428.00,42.00 440.00,439.00 440.00,439.00
+             440.00,439.00 439.00,534.00 439.00,534.00
+             439.00,534.00 623.00,828.00 623.00,828.00
+             623.00,828.00 783.00,1071.00 783.00,1071.00M 1892.00,256.00
+           C 1892.00,256.00 437.00,297.00 437.00,297.00M 1230.00,25.00
+           C 1230.00,25.00 1241.00,521.00 1241.00,521.00M 1466.00,1195.00
+           C 1466.00,1195.00 1901.00,943.00 1901.00,943.00M 1016.00,1195.00
+           C 1016.00,1195.00 1894.00,694.00 1894.00,694.00M 567.00,1191.00
+           C 567.00,1191.00 1893.00,445.00 1893.00,445.00M 164.00,43.00
+           C 164.00,43.00 426.00,39.00 426.00,39.00
+             426.00,39.00 1855.00,9.00 1855.00,9.00
+             1855.00,9.00 1877.00,7.00 1889.00,16.00
+             1891.00,43.00 1895.00,762.00 1895.00,762.00
+             1895.00,762.00 1900.00,1113.00 1900.00,1113.00
+             1900.00,1113.00 1865.00,1140.00 1887.00,1125.00
+             1832.00,1163.00 1764.00,1192.00 1764.00,1192.00
+             1764.00,1192.00 53.00,1193.00 53.00,1193.00
+             53.00,1193.00 0.00,1110.00 0.00,1110.00
+             0.00,1110.00 0.00,48.00 0.00,48.00
+             0.00,48.00 164.00,43.00 164.00,43.00 Z" />
+              <circle class="poi" cx="100" cy="300" r="8" data-info="Stacja 2 (S)" data-index="0" fill="#10B981" />
+              <circle class="poi" cx="700" cy="250" r="8" data-info="Stacja 3 (S)" data-index="1" fill="#10B981" />
+              <circle class="poi" cx="550" cy="950" r="8" data-info="Stacja 4 (S)" data-index="2" fill="#10B981" />
+              <circle class="poi" cx="1700" cy="800" r="8" data-info="Stacja 5 (S)" data-index="3" fill="#10B981" />
+              <circle class="poi cen" cx="750" cy="550" r="10" data-info="Pi 4" data-index="4" fill="#0003ff" />
+              <circle class="poi re" cx="1050" cy="700" r="8" data-info="Pi Zero" data-index="5" fill="#10B981" />
+              <circle class="poi" cx="1450" cy="200" r="8" data-info="Stacja 6 (S)" data-index="6" fill="#10B981" />
+              <circle class="poi" cx="400" cy="600" r="8" data-info="Stacja 7 (S)" data-index="7" fill="#10B981" />
+</svg>
+            <div class="satellite-view" id="satelliteView"></div>
+        </div>
+        <div class="view-toggle">
+            <button class="view-btn active" data-view="svg">Mapa</button>
+            <button class="view-btn" data-view="satellite">Satelita</button>
+        </div>
+    </div>
+
+    <aside class="side-panel">
+        <h3 style="margin:0 0 12px 0">Punkty pomiarowe</h3>
+        <div class="point-list" id="pointList">
+            <div class="point-card" data-index="0"><div class="dot" style="background:#FF6384" id="dot0"></div><div class="meta"><div class="name">Stacja 2 (S)</div><div class="val" id="v0">—</div></div></div>
+            <div class="point-card" data-index="1"><div class="dot" style="background:#36A2EB" id="dot1"></div><div class="meta"><div class="name">Stacja 3 (S)</div><div class="val" id="v1">—</div></div></div>
+            <div class="point-card" data-index="2"><div class="dot" style="background:#7C3AED" id="dot2"></div><div class="meta"><div class="name">Stacja 4 (S)</div><div class="val" id="v2">—</div></div></div>
+            <div class="point-card" data-index="3"><div class="dot" style="background:#10B981" id="dot3"></div><div class="meta"><div class="name">Stacja 5 (S)</div><div class="val" id="v3">—</div></div></div>
+            <div class="point-card" data-index="4"><div class="dot" style="background:var(--accent-2)" id="dot4"></div><div class="meta"><div class="name">Pi 4</div><div class="val" id="v4">Stacja odbierająca dane </div></div></div>
+            <div class="point-card" data-index="5"><div class="dot" style="background:#F59E0B" id="dot5"></div><div class="meta"><div class="name">Pi Zero</div><div class="val" id="v5">—</div></div></div>
+            <div class="point-card" data-index="6"><div class="dot" style="background:#F97316" id="dot6"></div><div class="meta"><div class="name">Stacja 6 (S)</div><div class="val" id="v6">—</div></div></div>
+            <div class="point-card" data-index="7"><div class="dot" style="background:#06B6D4" id="dot7"></div><div class="meta"><div class="name">Stacja 7 (S)</div><div class="val" id="v7">—</div></div></div>
+        </div>
+        <div class="footer">Kliknij punkt, aby otworzyć stronę z jego szczegółami.</div>
+    </aside>
+
+</div>
+
+<div id="tooltip" class="tooltip"></div>
+
+<script>
+const socket = io();
+let currentPoi = null;
+let values = {};
+
+socket.on('connect', () => console.log('Connected'));
+
+socket.on('values_update', (data) => {
+    values = data;
+    // update side panel
+    for (let i=0;i<8;i++){
+        const el = document.getElementById('v'+i);
+        const val = data[String(i)];
+        if (!el) continue;
+        if (i===4) { el.innerText = 'Brak danych'; continue; }
+        if (val && val.length>=3) {
+            const wind = val[3] !== undefined ? ` W:${val[3]}km/h` : '';
+            el.innerText = `T1:${val[0]}  T2:${val[1]}  Hu:${val[2]}${wind}`;
+            
+            // Aktualizacja koloru kropki (zielony=OK, czerwony=ALARM)
+            const frostAlert = val[4] || 0;
+            const dotEl = document.getElementById('dot' + i);
+            const poiCircles = document.querySelectorAll('.poi');
+            const poiCircle = poiCircles[i];
+            
+            if (frostAlert === 1) {
+                if (dotEl) dotEl.style.background = '#EF4444'; // czerwony
+                if (poiCircle && i !== 4) poiCircle.setAttribute('fill', '#EF4444');
+            } else {
+                if (dotEl) dotEl.style.background = '#10B981'; // zielony
+                if (poiCircle && i !== 4) poiCircle.setAttribute('fill', '#10B981');
+            }
+        } else {
+            el.innerText = 'oczekiwanie na dane';
+        }
+    }
+    // update tooltip if active
+    if (currentPoi){
+        const poiIndex = Array.from(document.querySelectorAll('.poi')).indexOf(currentPoi);
+        const poiValues = values[poiIndex];
+        const tip = document.querySelector('.tooltip');
+        if (poiValues && poiValues.length>0){
+            const wind = poiValues[3] !== undefined ? `  W: ${poiValues[3]}km/h` : '';
+            tip.innerText = `T1: ${poiValues[0]}  T2: ${poiValues[1]}  Hu: ${poiValues[2]}${wind}`;
+        } else if (currentPoi.dataset.info.includes('Pi 4')){
+            tip.innerText = currentPoi.dataset.info;
+        }
+    }
+});
+
+// hover tooltip behavior
+const tooltip = document.querySelector('.tooltip');
+document.querySelectorAll('.poi').forEach(poi=>{
+    poi.addEventListener('mouseenter', e=>{
+        currentPoi = poi;
+        tooltip.style.display='block';
+        const poiIndex = Array.from(document.querySelectorAll('.poi')).indexOf(currentPoi);
+        const v = values[String(poiIndex)];
+        if (v && v.length>=3) {
+            const wind = v[3] !== undefined ? `  W: ${v[3]}km/h` : '';
+            tooltip.innerText = `T1: ${v[0]}  T2: ${v[1]}  Hu: ${v[2]}${wind}`;
+        } else if (poi.dataset.info.includes('Pi 4')) tooltip.innerText = poi.dataset.info;
+        else tooltip.innerText = 'oczekiwanie na dane';
+    });
+    poi.addEventListener('mousemove', e=>{
+        tooltip.style.left = e.pageX + 12 + 'px';
+        tooltip.style.top = e.pageY + 12 + 'px';
+    });
+    poi.addEventListener('mouseleave', e=>{ currentPoi=null; tooltip.style.display='none'; });
+    poi.addEventListener('click', e=>{
+        const pointName = poi.dataset.info.split(":")[0];
+        window.location.href = '/' + pointName.replace(/ /g,'_');
+    });
+});
+
+// side panel clicks
+document.querySelectorAll('.point-card').forEach(card=>{
+    card.addEventListener('click', ()=>{
+        const idx = card.dataset.index;
+        const name = card.querySelector('.name').innerText.replace(/ /g,'_');
+        window.location.href = '/' + name;
+    });
+});
+
+// view toggle buttons
+document.querySelectorAll('.view-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+        const view = btn.dataset.view;
+        document.querySelectorAll('.view-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        
+        if (view === 'svg') {
+            document.getElementById('svgView').classList.remove('satellite-mode');
+            document.getElementById('satelliteView').style.display = 'none';
+        } else {
+            document.getElementById('svgView').classList.add('satellite-mode');
+            document.getElementById('satelliteView').style.display = 'block';
+        }
+    });
+});
+</script>
+
+</body>
+</html>

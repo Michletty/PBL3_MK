@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ point_name }} szczegóły</title>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<style>
+    body {
+        background: #f4f4f4;
+        font-family: Arial, sans-serif;
+        padding: 40px;
+    }
+    
+    .container {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        max-width: 1000px;
+        margin: 0 auto;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .chart-container {
+        position: relative;
+        height: 400px;
+        margin: 30px 0;
+    }
+    
+    .charts-wrapper {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 30px;
+    }
+    
+    h1 {
+        color: #333;
+        margin-top: 0;
+    }
+    
+    .values-display {
+        font-size: 24px;
+        margin: 30px 0;
+        line-height: 2;
+    }
+    
+    .value-item {
+        padding: 15px;
+        background: #f9f9f9;
+        border-left: 4px solid #0003ff;
+        margin: 10px 0;
+    }
+    
+    .back-button {
+        display: inline-block;
+        padding: 10px 20px;
+        background: #333;
+        color: white;
+        text-decoration: none;
+        border-radius: 4px;
+        margin-top: 20px;
+    }
+    
+    .back-button:hover {
+        background: #555;
+    }
+    
+    .frost-alert {
+        background: linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%);
+        border-left: 4px solid #DC2626;
+        padding: 20px;
+        margin: 20px 0;
+        border-radius: 8px;
+        display: none;
+    }
+    
+    .frost-alert.active {
+        display: block;
+    }
+    
+    .frost-alert h3 {
+        color: #DC2626;
+        margin: 0 0 10px 0;
+        font-size: 18px;
+    }
+    
+    .frost-alert p {
+        margin: 5px 0;
+        color: #7F1D1D;
+    }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h1>{{ point_name }} szczegóły</h1>
+    
+    <div class="frost-alert" id="frostAlert">
+        <h3>⚠️ Wysokie prawdopodobieństwo przymrozków!</h3>
+    </div>
+    
+    <div class="values-display" id="values"></div>
+    <div class="charts-wrapper">
+        <div class="chart-container">
+            <canvas id="chart"></canvas>
+        </div>
+        <div class="chart-container">
+            <canvas id="humidityChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <canvas id="windChart"></canvas>
+        </div>
+    </div>
+    <a href="/" class="back-button">← Powrót do mapy</a>
+</div>
+
+<script>
+const pointName = "{{ point_name }}";
+const pointIndex = {{ point_index }};
+const socket = io();
+let values = {};
+let chart = null;
+let humidityChart = null;
+let windChart = null;
+let chartData = { T1: [], T2: [], Hu: [], Wi: [], Fa: [] };
+let lastValues = null; // Śledzenie ostatniej wartości aby uniknąć duplikatów
+
+socket.on('connect', () => {
+    console.log('Connected to server');
+    // Fetch historical data on connect
+    if (pointIndex !== 4) {
+        fetchHistory();
+    }
+});
+
+socket.on('values_update', (data) => {
+    values = data;
+    updateDisplay();
+    updateChart();
+});
+
+function fetchHistory() {
+    fetch(`/api/history/${pointIndex}`)
+        .then(r => r.json())
+        .then(data => {
+            chartData = data;
+            initChart();
+            initHumidityChart();
+            initWindChart();
+        });
+}
+
+function initChart() {
+    const ctx = document.getElementById('chart').getContext('2d');
+    const labels = Array.from({length: chartData.T1.length}, (_, i) => i + 1);
+    
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'T1 (°C)',
+                    data: chartData.T1,
+                    borderColor: '#FF6384',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    tension: 0.1
+                },
+                {
+                    label: 'T2 (°C)',
+                    data: chartData.T2,
+                    borderColor: '#36A2EB',
+                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                    tension: 0.1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Temperatura'
+                },
+                legend: {
+                    display: true,
+                    position: 'top'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    min: -20,
+                    max: 40
+                }
+            }
+        }
+    });
+}
+
+function initHumidityChart() {
+    const ctx = document.getElementById('humidityChart').getContext('2d');
+    const labels = Array.from({length: chartData.Hu.length}, (_, i) => i + 1);
+    
+    humidityChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Wilgotność (%)',
+                    data: chartData.Hu,
+                    borderColor: '#FFCE56',
+                    backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                    tension: 0.1,
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Wilgotność'
+                },
+                legend: {
+                    display: true,
+                    position: 'top'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    min: 0,
+                    max: 100
+                }
+            }
+        }
+    });
+}
+
+function initWindChart() {
+    const ctx = document.getElementById('windChart').getContext('2d');
+    const labels = Array.from({length: chartData.Wi.length}, (_, i) => i + 1);
+    
+    windChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Wiatr (km/h)',
+                    data: chartData.Wi,
+                    borderColor: '#10B981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    tension: 0.1,
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Prędkość Wiatru'
+                },
+                legend: {
+                    display: true,
+                    position: 'top'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 80
+                }
+            }
+        }
+    });
+}
+
+function updateChart() {
+    if (!chart || pointIndex === 4) return;
+    
+    const poiValues = values[pointIndex];
+    if (poiValues && poiValues.length >= 3) {
+        // Sprawdź czy wartość się zmieniła (unikaj duplikatów)
+        const valuesStr = JSON.stringify(poiValues);
+        if (lastValues === valuesStr) return;
+        lastValues = valuesStr;
+        
+        // Dodaj nowe dane
+        chartData.T1.push(poiValues[0]);
+        chartData.T2.push(poiValues[1]);
+        chartData.Hu.push(poiValues[2]);
+        chartData.Wi.push(poiValues[3] || 0);
+        chartData.Fa.push(poiValues[4] || 0);
+        
+        // Keep only last 72
+        if (chartData.T1.length > 72) {
+            chartData.T1.shift();
+            chartData.T2.shift();
+            chartData.Hu.shift();
+            chartData.Wi.shift();
+            chartData.Fa.shift();
+        }
+        
+        // Update charts
+        chart.data.datasets[0].data = chartData.T1;
+        chart.data.datasets[1].data = chartData.T2;
+        chart.data.labels = Array.from({length: chartData.T1.length}, (_, i) => i + 1);
+        chart.update('none'); // 'none' = bez animacji, szybsze
+        
+        if (humidityChart) {
+            humidityChart.data.datasets[0].data = chartData.Hu;
+            humidityChart.data.labels = Array.from({length: chartData.Hu.length}, (_, i) => i + 1);
+            humidityChart.update('none');
+        }
+        
+        if (windChart) {
+            windChart.data.datasets[0].data = chartData.Wi;
+            windChart.data.labels = Array.from({length: chartData.Wi.length}, (_, i) => i + 1);
+            windChart.update('none');
+        }
+        
+        // Pokaż/ukryj alert przymrozkowy
+        const frostAlert = poiValues[4] || 0;
+        const alertDiv = document.getElementById('frostAlert');
+        if (frostAlert === 1) {
+            alertDiv.classList.add('active');
+        } else {
+            alertDiv.classList.remove('active');
+        }
+    }
+}
+
+function updateDisplay() {
+    const valuesDiv = document.getElementById('values');
+    const poiValues = values[pointIndex];
+    
+    if (poiValues && poiValues.length > 0) {
+        const labels = ['T1 (°C)', 'T2 (°C)', 'Wilgotność (%)', 'Wiatr (km/h)'];
+        // Wyświetl tylko 4 pierwsze wartości (T1, T2, Hu, Wi), pomiń frost_alert
+        const html = poiValues.slice(0, 4).map((v, i) => 
+            `<div class="value-item"><strong>${labels[i]}:</strong> ${v}</div>`
+        ).join('');
+        valuesDiv.innerHTML = html;
+    } else if (pointIndex === 4) {
+        valuesDiv.innerHTML = '<div class="value-item">Brak danych do wyświetlenia</div>';
+    } else {
+        valuesDiv.innerHTML = '<div class="value-item">Oczekiwanie na dane...</div>';
+    }
+}
+</script>
+
+</body>
+</html>
